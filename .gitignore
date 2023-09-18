@@ -1,0 +1,13 @@
+#Binaries
+
+process_server/process_server
+api_server/api_server
+client/client
+
+#Don't ignore the code files
+!/process_server/*
+!/api_server/*
+!/client/*
+
+
+
