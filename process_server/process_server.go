@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"tee-poc/common"
 
@@ -14,10 +15,39 @@ import (
 // ReEncryptData is a function that re-encrypts data with a pre-created user specific DEK
 func reEncryptData(data []byte, user string) error {
 
+	log.Printf("Updated data to be re-encrypted: %s", data)
 	// Retrieve user specific DEK from cloud KMS
-	// ...
 
-	log.Printf("rencrypted data: %s", data)
+	encDek, associatedData, err := common.GetEncDek(user)
+	if err != nil {
+		return fmt.Errorf("error retrieving DEK for user %s", user)
+	}
+
+	// Get Kek AEAD primitive
+	kekAead, err := common.CreateKekAEAD()
+	if err != nil {
+		return fmt.Errorf("error creating KEK AEAD primitive: %s", err)
+	}
+
+	// Decrypt the encrypted DEK
+	dek, err := common.DecryptKeyWithKEK(kekAead, encDek, associatedData)
+	if err != nil {
+		return fmt.Errorf("error decrypting DEK: %s", err)
+	}
+
+	// Create AEAD primitive
+	newAeadPrimitive, err := common.CreateAEADPrimitive(dek)
+	if err != nil {
+		return fmt.Errorf("error creating new AEAD primitive: %s", err)
+	}
+
+	// Encrypt data
+	encData, err := common.EncryptDataWithAead(data, newAeadPrimitive, associatedData)
+	if err != nil {
+		return fmt.Errorf("error encrypting data: %s", err)
+	}
+
+	log.Printf("rencrypted data: %s", encData)
 	return nil
 }
 
@@ -178,6 +208,17 @@ func VerifyToken(tokenString string) (int, error) {
 }
 
 func main() {
+
+	// Create per-user DEK and store it in a file
+
+	for _, u := range common.Users {
+		associatedData := []byte(strconv.Itoa(u.ID))
+		err := common.CreateEncDekPerUser(u.Username, associatedData)
+		if err != nil {
+			log.Fatal("Error creating encrypted DEK for user:", err)
+			return
+		}
+	}
 
 	http.HandleFunc("/process", ProcessHandler)
 

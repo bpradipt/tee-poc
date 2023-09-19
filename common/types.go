@@ -32,3 +32,6 @@ var PublicKeyJsonFile = "public_keyset.json"
 
 // Private key for decrypting user ephemeral DEK
 var PrivateKeyJsonFile = "private_keyset.json"
+
+// Local file to store encrypted per-user DEK
+var LocalKeyStoreJsonFile = "local_keystore.json"
