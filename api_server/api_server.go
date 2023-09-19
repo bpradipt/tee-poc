@@ -10,7 +10,7 @@ import (
 
 	"tee-poc/common"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 )
 
 // LoginHandler is a handler function that handles the /login endpoint
@@ -24,7 +24,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, u := range common.Users {
 		if u.Username == user.Username && u.Password == user.Password {
-			token, err := GenerateToken(u.ID)
+			token, err := common.GenerateToken(u.ID)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
@@ -37,18 +37,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusUnauthorized)
 	json.NewEncoder(w).Encode(common.Message{Status: "fail", Info: "invalid username or password"})
-}
-
-// GenerateToken is a function that generates a JWT token with the user id as a claim
-func GenerateToken(userid int) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"userid": userid,
-	})
-	tokenString, err := token.SignedString(common.SecretKey)
-	if err != nil {
-		return "", err
-	}
-	return tokenString, nil
 }
 
 // SendData is a function that sends data to the process server
@@ -108,7 +96,7 @@ func ProcessHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(common.Message{Status: "fail", Info: "missing authorization header"})
 		return
 	}
-	userid, err := VerifyToken(tokenString)
+	userid, err := common.VerifyToken(tokenString)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(common.Message{Status: "fail", Info: err.Error()})
@@ -134,36 +122,36 @@ func ProcessHandler(w http.ResponseWriter, r *http.Request) {
 	// Do something with the data
 	log.Printf("Data received: %v\n", data)
 
+	// Create a requestId (uid) to be added to the data
+	requestId, err := uuid.NewRandom()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		// Send error message to client
+		json.NewEncoder(w).Encode(common.Message{Status: "failed to generate request Id", Info: err.Error()})
+		return
+	}
+
+	b64RequestID, err := common.Base64Encode(requestId.String())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		// Send error message to client
+		json.NewEncoder(w).Encode(common.Message{Status: "failed to encode request Id", Info: err.Error()})
+		return
+	}
+
+	data["requestId"] = b64RequestID
+
 	// Send data to process server listening on port 8081
 	err = SendData(data, tokenString)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		// Send error message to client
-		json.NewEncoder(w).Encode(common.Message{Status: "fail", Info: err.Error()})
+		json.NewEncoder(w).Encode(common.Message{Status: "failed to send data", Info: err.Error()})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(common.Message{Status: "success", Info: "data processed successfully"})
-}
-
-// VerifyToken is a function that verifies a JWT token and returns the user id claim
-func VerifyToken(tokenString string) (int, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return common.SecretKey, nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		log.Printf("Claims: %v\n", claims)
-		userid := int(claims["userid"].(float64))
-		return userid, nil
-	}
-	return 0, fmt.Errorf("invalid token")
 }
 
 func main() {

@@ -3,8 +3,8 @@ module tee-poc
 go 1.20
 
 require (
-	github.com/bpradipt/tee-poc v0.0.0-00010101000000-000000000000
 	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/google/uuid v1.3.1
 	github.com/tink-crypto/tink-go v0.0.0-20230613075026-d6de17e3f164
 	github.com/tink-crypto/tink-go/v2 v2.0.0
 )

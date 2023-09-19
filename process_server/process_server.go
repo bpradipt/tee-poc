@@ -11,27 +11,106 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// ReEncryptData is a function that re-encrypts data with a pre-created user specific DEK
+func reEncryptData(data []byte, user string) error {
+
+	// Retrieve user specific DEK from cloud KMS
+	// ...
+
+	log.Printf("rencrypted data: %s", data)
+	return nil
+}
+
+// Decrypt the data received. The data is encrypted with a DEK, which is encrypted with a public keyset.
+// Also the data and the key are base64 encoded.
+func decryptKeyAndData(encKey string, encData string, associatedData []byte) (decData []byte, err error) {
+
+	decData = []byte{}
+	// Decrypt DEK with a private keyset
+	// Read private keyset from file
+	privateKeyset, err := common.ReadKeysetFromJsonFile(common.PrivateKeyJsonFile)
+	if err != nil {
+		log.Printf("Error reading private keyset: %s", err)
+		return decData, err
+	}
+
+	// Base64 decode encryptedKey
+	encKeyBytes, err := common.Base64Decode(encKey)
+	if err != nil {
+		log.Printf("Error base64 decoding encryptedKey: %s", err)
+		return decData, err
+	}
+
+	dek, err := common.DecryptDekWithProvisionedPrivateKey(encKeyBytes, privateKeyset)
+	if err != nil {
+		log.Printf("Error decrypting DEK with private key: %s", err)
+		return decData, err
+	}
+
+	// Create AEAD primitive
+	newAeadPrimitive, err := common.CreateAEADPrimitive(dek)
+	if err != nil {
+		log.Printf("Error creating new AEAD primitive: %s", err)
+		return decData, err
+	}
+
+	// Base64 decode encryptedData
+	encDataBytes, err := common.Base64Decode(encData)
+	if err != nil {
+		log.Printf("Error base64 decoding encryptedData: %s", err)
+		return decData, err
+	}
+
+	// Decrypt data
+	decData, err = common.DecryptDataWithAead(encDataBytes, newAeadPrimitive, associatedData)
+	if err != nil {
+		log.Printf("Error decrypting data: %s", err)
+		return decData, err
+	}
+	log.Printf("Decrypted data: %s\n", decData)
+
+	return decData, nil
+}
+
 // processData is a function that processes data
-func processData(data map[string]interface{}) error {
+func processData(data map[string]interface{}, user string) error {
 	// Get the encrypted data
-	encryptedData, ok := data["enc_data"].(string)
+	encData, ok := data["enc_data"].(string)
 	if !ok {
 		return fmt.Errorf("missing enc_data field")
 	}
-	log.Printf("Encrypted data: %s\n", encryptedData)
+	log.Printf("Encrypted data: %s\n", encData)
 
 	// Get the encrypted key
-	encryptedKey, ok := data["enc_key"].(string)
+	encKey, ok := data["enc_key"].(string)
 	if !ok {
 		return fmt.Errorf("missing enc_key field")
 	}
-	log.Printf("Encrypted key: %s\n", encryptedKey)
+	log.Printf("Encrypted key: %s\n", encKey)
+
+	requestId, ok := data["requestId"].(string)
+	if !ok {
+		return fmt.Errorf("missing requestId field")
+	}
+	log.Printf("Request ID: %s\n", requestId)
+	decData, err := decryptKeyAndData(encKey, encData, []byte(user))
+	if err != nil {
+		return fmt.Errorf("error decrypting key and data: %s", err)
+	}
+
+	// Update the data
+	decData = append(decData, []byte(" processed")...)
+
+	// Re-encrypt the data with pre-created user specific DEK
+	reEncryptData(decData, user)
 
 	return nil
 }
 
 // ProcessHandler is a handler function that handles the /process endpoint
 func ProcessHandler(w http.ResponseWriter, r *http.Request) {
+	var user string
+
 	w.Header().Set("Content-Type", "application/json")
 	tokenString := r.Header.Get("Authorization")
 	if tokenString == "" {
@@ -51,6 +130,8 @@ func ProcessHandler(w http.ResponseWriter, r *http.Request) {
 	for _, u := range common.Users {
 		if u.ID == userid {
 			log.Printf("Username: %s\n", u.Username)
+			user = u.Username
+			break
 		}
 	}
 
@@ -65,7 +146,7 @@ func ProcessHandler(w http.ResponseWriter, r *http.Request) {
 	// Do something with the data
 	log.Printf("Data received: %v\n", data)
 
-	err = processData(data)
+	err = processData(data, user)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		// Send error message to client

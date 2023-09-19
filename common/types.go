@@ -25,9 +25,10 @@ var Users = []User{
 }
 
 // Secret key for signing JWT tokens
-
 var SecretKey = []byte("secret")
 
-// SSL certificate and key for HTTPS server
-var CertFile = "/path/to/cert.pem"
-var KeyFile = "/path/to/key.pem"
+// Public key for encrypting user ephemeral DEK
+var PublicKeyJsonFile = "public_keyset.json"
+
+// Private key for decrypting user ephemeral DEK
+var PrivateKeyJsonFile = "private_keyset.json"
