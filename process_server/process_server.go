@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"tee-poc/common"
@@ -209,14 +210,18 @@ func VerifyToken(tokenString string) (int, error) {
 
 func main() {
 
-	// Create per-user DEK and store it in a file
-
-	for _, u := range common.Users {
-		associatedData := []byte(strconv.Itoa(u.ID))
-		err := common.CreateEncDekPerUser(u.Username, associatedData)
-		if err != nil {
-			log.Fatal("Error creating encrypted DEK for user:", err)
-			return
+	// Check if the LocalKeyStoreJsonFile exists
+	// If it does not exist, create it
+	// If it exists, do nothing
+	if _, err := os.Stat(common.LocalKeyStoreJsonFile); os.IsNotExist(err) {
+		// Create per-user DEK and store it in a file
+		for _, u := range common.Users {
+			associatedData := []byte(strconv.Itoa(u.ID))
+			err := common.CreateEncDekPerUser(u.Username, associatedData)
+			if err != nil {
+				log.Fatal("Error creating encrypted DEK for user:", err)
+				return
+			}
 		}
 	}
 
